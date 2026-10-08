@@ -1,0 +1,8 @@
+pandas
+duckdb
+pymysql
+sqlalchemy
+python-dotenv
+requests
+urllib3
+pandas-datareader
