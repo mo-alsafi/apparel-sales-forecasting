@@ -1,1 +1,27 @@
+# Python Execution Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Database Files (Local DuckDB database build artifacts)
+*.duckdb
+*.duckdb.wal
+
+# Environment Variables & Secrets
 .env
+.env.local
+
+# IDE Configurations
+.vscode/
+.idea/
+
+# OS Specific Files
+.DS_Store
+Thumbs.db
