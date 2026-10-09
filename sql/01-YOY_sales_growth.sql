@@ -15,4 +15,5 @@ SELECT
     ) AS yoy_growth_percentage
 FROM yoy_sales
 WHERE observation_date >= '1993-01-01'
+	AND apparel_sales_nsa IS NOT NULL
 ORDER BY observation_date ASC;

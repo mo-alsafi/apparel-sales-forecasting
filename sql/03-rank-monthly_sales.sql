@@ -4,7 +4,7 @@ WITH CompleteYears AS (
 	FROM monthly_macro_apparel
 	WHERE apparel_sales_nsa IS NOT NULL
     GROUP BY sales_year
-    HAVING COUNT(DISTINCT EXTRACT(MONTH FROM observation_date) = 12)
+    HAVING COUNT(DISTINCT EXTRACT(MONTH FROM observation_date)) = 12
 ),
 RankedMonthlySales AS (
 	SELECT 

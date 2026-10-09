@@ -42,7 +42,9 @@ def execute_data_pull():
             df = web.DataReader(series_id, "fred", start="1990-01-01")
             df = df.reset_index()
             df.columns = ["DATE", series_id]
-            df.to_csv(file_path, index=False)
+            
+            # Write with explicit LF line endings for cross-platform SHA-256 consistency
+            df.to_csv(file_path, index=False, lineterminator="\n")
             print(f"Successfully downloaded and saved {series_id}.csv")
 
         except Exception as e:

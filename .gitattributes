@@ -1,0 +1,2 @@
+# Enforce LF line endings for CSV files across Windows and Unix environments
+*.csv text eol=lf

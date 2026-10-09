@@ -1,11 +1,11 @@
 {
-    "retrieval_timestamp_utc": "2026-10-08T22:16:36.820265+00:00",
+    "retrieval_timestamp_utc": "2026-10-09T02:51:09.676370+00:00",
     "files": {
         "MRTSSM448USN": {
             "local_path": "data/raw/MRTSSM448USN.csv",
             "variable_name": "apparel_sales_raw",
             "source": "fred_live",
-            "sha256": "132e3ee1861a34990143f39b5ca8633cfa9dc8be6c2f6e4c9da84173868bcc72",
+            "sha256": "3382506d51a3a15d6725ebc3e3838a6a4deb866064ca3d4ec350165ee6222c01",
             "row_count": 415,
             "start_date": "1992-01-01",
             "end_date": "2026-07-01"
@@ -14,7 +14,7 @@
             "local_path": "data/raw/MRTSSM448USS.csv",
             "variable_name": "apparel_sales_sa",
             "source": "fred_live",
-            "sha256": "42be40988ddae889838e5e794df8d5a1db03da919d1f97f7ebd4c2713df878c6",
+            "sha256": "87d0411e77ee7f5376fdfd8967a5187deb11ffb0e073eec54fc82f305d0c5a60",
             "row_count": 415,
             "start_date": "1992-01-01",
             "end_date": "2026-07-01"
@@ -23,7 +23,7 @@
             "local_path": "data/raw/CPIAUCSL.csv",
             "variable_name": "cpi",
             "source": "fred_live",
-            "sha256": "bac70d726b33760d25a76fbabe8f5fcd68e349a5847de820216e7e68ffe48843",
+            "sha256": "00f9ff45340dca893f40f8ca770e8e2d5dab0226309467ce6858d8089a789000",
             "row_count": 440,
             "start_date": "1990-01-01",
             "end_date": "2026-08-01"
@@ -32,7 +32,7 @@
             "local_path": "data/raw/UNRATE.csv",
             "variable_name": "unemployment_rate",
             "source": "fred_live",
-            "sha256": "3f9b52dbcb620969f8aef47f95a6615c73ff5b170df79d3b1e47a638c4fb1a58",
+            "sha256": "c4799b972d87ebf1bfbb5767e4fee3de81b96a032ce28cbd03ca97b70467c585",
             "row_count": 441,
             "start_date": "1990-01-01",
             "end_date": "2026-09-01"

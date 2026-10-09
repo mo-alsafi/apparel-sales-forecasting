@@ -1,9 +1,8 @@
 import os
+from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
-from pathlib import Path
 from sqlalchemy import create_engine
-
 
 load_dotenv()
 
@@ -14,31 +13,45 @@ DATA_MAP = {
     "raw_apparel_sales_nsa": "MRTSSM448USN.csv",
     "raw_apparel_sales_sa": "MRTSSM448USS.csv",
     "raw_cpi": "CPIAUCSL.csv",
-    "raw_unemployment_rate": "UNRATE.csv"
+    "raw_unemployment_rate": "UNRATE.csv",
 }
 
-def raw_data_sql_ingest(DATA_DIR, DATA_MAP):
-    DB_USER, DB_PASS = os.getenv("DB_USER"), os.getenv("DB_PASS")
-    DB_HOST, DB_PORT, DB_NAME = os.getenv("DB_HOST"), os.getenv("DB_PORT"), os.getenv("DB_NAME")
-    
-    conn_string = f"mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+def raw_data_sql_ingest(data_dir: Path, data_map: dict):
+    db_user = os.getenv("DB_USER")
+    db_pass = os.getenv("DB_PASS")
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_port = os.getenv("DB_PORT", "3306")
+    db_name = os.getenv("DB_NAME")
+
+    if not all([db_user, db_pass, db_name]):
+        raise ValueError(
+            "Missing required database environment variables (DB_USER, DB_PASS, DB_NAME). "
+            "Please check your .env configuration."
+        )
+
+    conn_string = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     engine = create_engine(conn_string)
-    
-    for dname, fname in DATA_MAP.items():
-        data_path = DATA_DIR / fname
-        df = pd.read_csv(data_path)
-        
-        try:
-            df.to_sql(
-                name=dname,
-                if_exists="replace",
-                con=engine,
-                index=False
+
+    for table_name, file_name in data_map.items():
+        file_path = data_dir / file_name
+
+        if not file_path.exists():
+            raise FileNotFoundError(
+                f"Raw CSV file not found at {file_path.as_posix()}. Run data_loader.py first."
             )
-            print(f"##### Done ingesting file {fname} ({dname}) to Mysql.")
-        except Exception as e:
-            print(f"XXXXX Couldn't ingest file {fname} ({dname}) to Mysql here is why: \n {e}")
-            
+
+        df = pd.read_csv(file_path)
+
+        # Ingest directly without swallowing exceptions; raises immediately on DB error
+        df.to_sql(
+            name=table_name,
+            con=engine,
+            if_exists="replace",
+            index=False,
+        )
+        print(f"Successfully ingested {file_name} into MySQL table '{table_name}' ({len(df)} rows).")
+
 
 if __name__ == "__main__":
-    raw_data_sql_ingest(DATA_DIR=RAW_DATA_DIR, DATA_MAP=DATA_MAP)
+    raw_data_sql_ingest(data_dir=RAW_DATA_DIR, data_map=DATA_MAP)

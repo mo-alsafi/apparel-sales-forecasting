@@ -1,10 +1,10 @@
 
 ALTER TABLE raw_apparel_sales_nsa MODIFY COLUMN `DATE` DATE;
-ALTER TABLE raw_apparel_sales_nsa RENAME COLUMN  TO apparel_sales_nsa
+ALTER TABLE raw_apparel_sales_nsa RENAME COLUMN MRTSSM448USN TO apparel_sales_nsa
 ALTER TABLE raw_apparel_sales_nsa MODIFY COLUMN apparel_sales_nsa DOUBLE;
 
 ALTER TABLE raw_apparel_sales_sa MODIFY COLUMN `DATE` DATE;
-ALTER TABLE raw_apparel_sales_sa RENAME COLUMN  TO apparel_sales_sa
+ALTER TABLE raw_apparel_sales_sa RENAME COLUMN MRTSSM448USS TO apparel_sales_sa
 ALTER TABLE raw_apparel_sales_sa MODIFY COLUMN apparel_sales_sa DOUBLE;
 
 ALTER TABLE raw_cpi MODIFY COLUMN `DATE` DATE;
@@ -12,6 +12,7 @@ ALTER TABLE raw_cpi MODIFY COLUMN CPIAUCSL DOUBLE;
 
 ALTER TABLE raw_unemployment_rate MODIFY COLUMN `DATE` DATE;
 ALTER TABLE raw_unemployment_rate MODIFY COLUMN UNRATE DOUBLE;
+
 
 CREATE TABLE IF NOT EXISTS monthly_macro_apparel AS
 WITH RECURSIVE date_bounds AS (
@@ -55,7 +56,7 @@ SELECT
     -- CPI Interpolation
     CASE
 		WHEN cpi_raw IS NULL AND observation_date < (SELECt MAX(`DATE`) FROM raw_cpi) THEN 
-			(LAG(cpi_raw, 1) OVER (ORDER BY observation_date) + LEAD(cpi_raw, 1) OVER (ORDER BY observation_date))
+			(LAG(cpi_raw, 1) OVER (ORDER BY observation_date) + LEAD(cpi_raw, 1) OVER (ORDER BY observation_date)) / 2.0
 		ELSE cpi_raw
 	END AS cpi,
     CASE 
@@ -66,7 +67,7 @@ SELECT
     -- Unemployment Interpolation
     CASE 
 		WHEN unrate_raw IS NULL AND observation_date < (SELECT MAX(`DATE`) FROM raw_unemployment_rate) THEN 
-			(LAG(unrate_raw, 1) OVER (ORDER BY observation_date) + LEAD(unrate_raw, 1) OVER (ORDER BY observation_date))
+			(LAG(unrate_raw, 1) OVER (ORDER BY observation_date) + LEAD(unrate_raw, 1) OVER (ORDER BY observation_date)) / 2.0
 		ELSE unrate_raw
 	END AS unrate,
     CASE 

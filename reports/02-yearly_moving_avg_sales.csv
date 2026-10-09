@@ -1,4 +1,4 @@
-observation_date,sales,moving_avg_yearly_sales
+observation_date,apparel_sales_nsa,rolling_yearly_avg_sales
 1993-01-01,7297,9773.92
 1993-02-01,7306,9774.25
 1993-03-01,8531,9798.08
@@ -402,5 +402,3 @@ observation_date,sales,moving_avg_yearly_sales
 2026-05-01,29282,27276.33
 2026-06-01,26295,27386.25
 2026-07-01,27951,27493
-2026-08-01,NULL,27427.36
-2026-09-01,NULL,27783.3
