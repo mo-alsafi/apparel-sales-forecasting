@@ -11,25 +11,45 @@ MASTER_CSV_PATH = REPORTS_DIR / "00-monthly_macro_apparel.csv"
 def validate_dataset(df: pd.DataFrame):
     print("Running automated data validation assertions...")
 
-    # 1. Total row count assertion (1990-01-01 to 2026-09-01 = 441 months)
-    assert len(df) == 441, f"Validation Failure: Expected 441 rows, found {len(df)}."
-
-    # 2. Date continuity assertion (zero missing months)
     df["observation_date"] = pd.to_datetime(df["observation_date"])
-    expected_dates = pd.date_range(start="1990-01-01", end="2026-09-01", freq="MS")
+    min_date = df["observation_date"].min()
+    max_date = df["observation_date"].max()
+
+    # 1. Dynamic date range and continuity validation
+    expected_dates = pd.date_range(start=min_date, end=max_date, freq="MS")
+    expected_row_count = len(expected_dates)
+
+    assert len(df) == expected_row_count, (
+        f"Validation Failure: Expected {expected_row_count} rows based on range "
+        f"[{min_date.strftime('%Y-%m')} to {max_date.strftime('%Y-%m')}], found {len(df)}."
+    )
+
     missing_dates = expected_dates.difference(df["observation_date"])
-    assert len(missing_dates) == 0, f"Validation Failure: Missing dates detected: {missing_dates}"
+    assert len(missing_dates) == 0, f"Validation Failure: Missing dates detected in sequence: {missing_dates}"
 
-    # 3. No NULL sales from 1992-01 to 2026-07
+    # 2. Imputation flag count assertions (exactly one imputed row per series)
+    cpi_imputed_count = int(df["cpi_is_imputed"].sum())
+    assert cpi_imputed_count == 1, (
+        f"Validation Failure: Expected exactly 1 imputed row for CPI, found {cpi_imputed_count}."
+    )
+
+    unrate_imputed_count = int(df["unrate_is_computed"].sum())
+    assert unrate_imputed_count == 1, (
+        f"Validation Failure: Expected exactly 1 imputed row for Unemployment, found {unrate_imputed_count}."
+    )
+
+    # 3. Target sales completeness check (1992-01 up to published target horizon)
+    latest_sales_date = df[df["apparel_sales_nsa"].notna()]["observation_date"].max()
     core_sales = df[
-        (df["observation_date"] >= "1992-01-01") & (df["observation_date"] <= "2026-07-01")
+        (df["observation_date"] >= "1992-01-01") & (df["observation_date"] <= latest_sales_date)
     ]["apparel_sales_nsa"]
-    null_count = core_sales.isna().sum()
-    assert (
-        null_count == 0
-    ), f"Validation Failure: Found {null_count} NULL sales values in core period (1992-01 to 2026-07)."
+    null_sales_count = core_sales.isna().sum()
 
-    # 4. October 2025 CPI interpolation check
+    assert null_sales_count == 0, (
+        f"Validation Failure: Found {null_sales_count} NULL sales values between 1992-01-01 and {latest_sales_date.strftime('%Y-%m')}."
+    )
+
+    # 4. October 2025 CPI interpolation bounds check
     oct_2025_cpi = df[df["observation_date"] == "2025-10-01"]["cpi"].values[0]
     sep_2025_cpi = df[df["observation_date"] == "2025-09-01"]["cpi"].values[0]
     nov_2025_cpi = df[df["observation_date"] == "2025-11-01"]["cpi"].values[0]
@@ -39,7 +59,7 @@ def validate_dataset(df: pd.DataFrame):
         f"does not lie strictly between Sep 2025 ({sep_2025_cpi}) and Nov 2025 ({nov_2025_cpi})."
     )
 
-    print("All 4 data validation checks passed successfully.")
+    print("All dynamic validation assertions passed successfully.")
 
 
 def initialize_database():
@@ -75,7 +95,7 @@ def initialize_database():
         FROM read_csv_auto('data/raw/UNRATE.csv', nullstr=['.', '']);
     """)
 
-    # 2. Build continuous monthly calendar spine and interpolate October 2025 missing values
+    # 2. Build continuous calendar spine and interpolate missing macro values
     conn.execute("""
         CREATE OR REPLACE TABLE monthly_macro_apparel AS
         WITH date_bounds AS (
@@ -140,13 +160,15 @@ def initialize_database():
         ORDER BY observation_date ASC;
     """)
 
-    # 3. Export master table to reports/00-monthly_macro_apparel.csv for database-free modeling
+    # 3. Extract in-memory DataFrame
     df_master = conn.execute("SELECT * FROM monthly_macro_apparel").fetchdf()
-    df_master.to_csv(MASTER_CSV_PATH, index=False, lineterminator="\n")
-    print(f"Exported master dataset: {MASTER_CSV_PATH.as_posix()} ({len(df_master)} rows)")
 
-    # 4. Run automated validation assertions
+    # 4. Validate in-memory BEFORE writing to disk
     validate_dataset(df_master)
+
+    # 5. Export master CSV snapshot only after validation passes
+    df_master.to_csv(MASTER_CSV_PATH, index=False, lineterminator="\n")
+    print(f"Successfully validated and exported master dataset: {MASTER_CSV_PATH.as_posix()} ({len(df_master)} rows)")
 
     conn.close()
 

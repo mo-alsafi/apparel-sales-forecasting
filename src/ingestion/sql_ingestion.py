@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
 load_dotenv()
 
@@ -27,11 +28,18 @@ def raw_data_sql_ingest(data_dir: Path, data_map: dict):
     if not all([db_user, db_pass, db_name]):
         raise ValueError(
             "Missing required database environment variables (DB_USER, DB_PASS, DB_NAME). "
-            "Please check your .env configuration."
+            "Please verify your .env file."
         )
 
-    conn_string = f"mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    engine = create_engine(conn_string)
+    connection_url = URL.create(
+        drivername="mysql+pymysql",
+        username=db_user,
+        password=db_pass,
+        host=db_host,
+        port=int(db_port),
+        database=db_name,
+    )
+    engine = create_engine(connection_url)
 
     for table_name, file_name in data_map.items():
         file_path = data_dir / file_name
@@ -43,7 +51,6 @@ def raw_data_sql_ingest(data_dir: Path, data_map: dict):
 
         df = pd.read_csv(file_path)
 
-        # Ingest directly without swallowing exceptions; raises immediately on DB error
         df.to_sql(
             name=table_name,
             con=engine,

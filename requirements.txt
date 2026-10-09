@@ -1,8 +1,21 @@
-pandas
-duckdb
-pymysql
-sqlalchemy
-python-dotenv
-requests
-urllib3
-pandas-datareader
+# Data Storage & Ingestion
+duckdb==0.10.3
+pymysql==1.1.1
+sqlalchemy==2.0.30
+cryptography==42.0.8
+python-dotenv==1.0.1
+
+# Data Manipulation & Remote Fetching
+numpy==1.26.4
+pandas==2.2.2
+pandas-datareader==0.10.0
+
+# Statistical Modeling & Machine Learning
+pmdarima==2.0.4
+prophet==1.1.5
+scikit-learn==1.5.0
+statsmodels==0.14.2
+
+# Data Visualization
+matplotlib==3.9.0
+seaborn==0.13.2
