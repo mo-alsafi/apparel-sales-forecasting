@@ -1,33 +1,41 @@
 {
-    "retrieval_timestamp_utc": "2026-10-06T02:23:56.671524+00:00",
+    "retrieval_timestamp_utc": "2026-10-08T22:16:36.820265+00:00",
     "files": {
         "MRTSSM448USN": {
-            "local_path": "data/raw\\MRTSSM448USN.csv",
-            "variable_name": "apparel_sales_nsa",
+            "local_path": "data/raw/MRTSSM448USN.csv",
+            "variable_name": "apparel_sales_raw",
+            "source": "fred_live",
+            "sha256": "132e3ee1861a34990143f39b5ca8633cfa9dc8be6c2f6e4c9da84173868bcc72",
             "row_count": 415,
-            "start_date": "1992-01-01 00:00:00",
-            "end_date": "2026-07-01 00:00:00"
+            "start_date": "1992-01-01",
+            "end_date": "2026-07-01"
         },
         "MRTSSM448USS": {
-            "local_path": "data/raw\\MRTSSM448USS.csv",
+            "local_path": "data/raw/MRTSSM448USS.csv",
             "variable_name": "apparel_sales_sa",
+            "source": "fred_live",
+            "sha256": "42be40988ddae889838e5e794df8d5a1db03da919d1f97f7ebd4c2713df878c6",
             "row_count": 415,
-            "start_date": "1992-01-01 00:00:00",
-            "end_date": "2026-07-01 00:00:00"
+            "start_date": "1992-01-01",
+            "end_date": "2026-07-01"
         },
         "CPIAUCSL": {
-            "local_path": "data/raw\\CPIAUCSL.csv",
+            "local_path": "data/raw/CPIAUCSL.csv",
             "variable_name": "cpi",
+            "source": "fred_live",
+            "sha256": "bac70d726b33760d25a76fbabe8f5fcd68e349a5847de820216e7e68ffe48843",
             "row_count": 440,
-            "start_date": "1990-01-01 00:00:00",
-            "end_date": "2026-08-01 00:00:00"
+            "start_date": "1990-01-01",
+            "end_date": "2026-08-01"
         },
         "UNRATE": {
-            "local_path": "data/raw\\UNRATE.csv",
+            "local_path": "data/raw/UNRATE.csv",
             "variable_name": "unemployment_rate",
+            "source": "fred_live",
+            "sha256": "3f9b52dbcb620969f8aef47f95a6615c73ff5b170df79d3b1e47a638c4fb1a58",
             "row_count": 441,
-            "start_date": "1990-01-01 00:00:00",
-            "end_date": "2026-09-01 00:00:00"
+            "start_date": "1990-01-01",
+            "end_date": "2026-09-01"
         }
     }
 }

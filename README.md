@@ -23,10 +23,10 @@ Which forecasting method should the business trust, under what economic conditio
 
 | Variable Name | Series ID | Official Source | Units | Frequency | Seasonality | Revision Policy |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `apparel_sales_raw` | `MRTSSM448USN` | U.S. Census Bureau (MRTS) | Millions of USD | Monthly | Not Seasonally Adjusted | Revised monthly; full annual benchmark update in April |
+| `apparel_sales_nsa` | `MRTSSM448USN` | U.S. Census Bureau (MRTS) | Millions of USD | Monthly | Not Seasonally Adjusted | Revised monthly; full annual benchmark update in April |
 | `apparel_sales_sa` | `MRTSSM448USS` | U.S. Census Bureau (MRTS) | Millions of USD | Monthly | Seasonally Adjusted | Revised backward 3–5 years during seasonal adjustment cycles |
 | `cpi` | `CPIAUCSL` | U.S. Bureau of Labor Statistics | Index 1982–1984=100 | Monthly | Seasonally Adjusted | Revised annually for seasonal factors (last 5 years) |
-| `unemployment_rate` | `UNRATE` | U.S. Bureau of Labor Statistics | Percent (%) | Monthly | Seasonally Adjusted | Subject to annual historical benchmark revisions |
+| `unrate` | `UNRATE` | U.S. Bureau of Labor Statistics | Percent (%) | Monthly | Seasonally Adjusted | Subject to annual historical benchmark revisions |
 
 *Note: `MRTSSM448USN` represents the full Monthly Retail Trade Survey (MRTS) for Clothing and Clothing Accessories Stores, whereas `RSCCASN` represents Advance Retail Sales.*
 
@@ -38,23 +38,22 @@ Which forecasting method should the business trust, under what economic conditio
 - **Data Pull Date:** October 2026
 - **Revision Risk:** Economic time series from FRED are subject to historical revisions. The standard deviation of revisions is highest in the most recent 3–6 months. Models trained on unrevised historical data will evaluate against revised series in real-world deployment.
 
-### 2. Missing Data & October 2025 CPI Gap
-- **October 2025 CPI Anomaly:** The October 2025 observation for `CPIAUCSL` exhibits a missing/delayed release value in public FRED tables.
-- **Remediation Strategy:** Imputed via linear interpolation using adjacent month observations ($\frac{\text{CPI}_{\text{Sep}} + \text{CPI}_{\text{Nov}}}{2}$) prior to model ingestion. `UNRATE` verified complete across all periods.
+### 2. Missing Data & October 2025 Gap Imputation
+- **October 2025 Anomaly:** Both `CPIAUCSL` and `UNRATE` contain missing values for the `2025-10-01` release in FRED snapshots.
+- **Pipeline Processing:** Raw CSV files in `data/raw/` are preserved untouched. The processing layer in `src/db_ingestion.py` performs linear interpolation for this single-month gap:
+  - **CPI Interpolation:** $\frac{\text{CPI}_{\text{Sep25}} + \text{CPI}_{\text{Nov25}}}{2} = \frac{324.245 + 325.063}{2} = 324.654$
+  - **UNRATE Interpolation:** $\frac{\text{UNRATE}_{\text{Sep25}} + \text{UNRATE}_{\text{Nov25}}}{2} = \frac{4.4 + 4.5}{2} = 4.45$
+- **Imputation Audit:** Explicit boolean indicators (`cpi_is_imputed` and `unrate_is_imputed`) are stored in `monthly_macro_apparel` to track transformed values.
 
-### 3. Exogenous Variable Forecast Alignment
+### 3. Exogenous Alignment & Date Spine Architecture
+- **Calendar Spine:** The target table `monthly_macro_apparel` is constructed using an explicit monthly date spine (`generate_series`). This prevents `LEFT JOIN` operations on sales from truncating available macro regressors when CPI or UNRATE data extend past the latest published sales month.
+
+### 4. Future Exogenous Availability
 - **The Information Leakage Catch:** At forecast origin $t$, future exogenous regressors ($CPI_{t+h}$ and $UNRATE_{t+h}$) for horizon $h \in [1, 12]$ are unobserved.
 - **Handling Strategies:**
   1. **Lagged Feature Architecture:** Use $h$-step lagged values ($X_{t}$) so predictions depend only on known historical macro data.
   2. **Univariate Regressor Forecasting:** Fit independent ARIMA models to project CPI and Unemployment 12 months ahead before feeding into SARIMAX/Prophet.
   3. **Macroeconomic Scenario Analysis:** Evaluate Base, Optimistic, and Stress scenarios for exogenous inputs.
-
-### 4. Cross-Validation Structure & COVID-19 Treatment
-- **Holdout Test Set:** Last 24 months of observations held out until final model evaluation.
-- **Rolling-Origin CV:** 5 expanding window folds with a 12-month horizon.
-- **COVID-19 Structural Shock (2020):**
-  - March–May 2020 contains extreme negative outliers due to retail store closures.
-  - **Mitigation:** Evaluated using (a) Intervention Dummy Variables (March–June 2020 = 1), (b) Pre-2020 vs. Post-2020 training windows, and (c) Outlier adjustment via STL decomposition residuals.
 
 ---
 

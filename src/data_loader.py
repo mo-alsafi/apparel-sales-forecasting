@@ -1,75 +1,80 @@
-import os 
+import hashlib
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 import pandas as pd
 import pandas_datareader.data as web
 
-
-RAW_DIR = "data/raw"
-MANIFEST_PATH = os.path.join(RAW_DIR, "retrieval_manifest.json")
+RAW_DIR = Path("data/raw")
+MANIFEST_PATH = RAW_DIR / "retrieval_manifest.json"
 
 SERIES_MAP = {
-    "MRTSSM448USN": "apparel_sales_nsa",
+    "MRTSSM448USN": "apparel_sales_raw",
     "MRTSSM448USS": "apparel_sales_sa",
     "CPIAUCSL": "cpi",
-    "UNRATE": "unemployment_rate"
+    "UNRATE": "unemployment_rate",
 }
 
 
-def ensure_directory():
-    os.makedirs(RAW_DIR , exist_ok=True)
-    
+def compute_sha256(file_path: Path) -> str:
+    hasher = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def execute_data_pull():
-    ensure_directory()
-        
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
     manifest = {
         "retrieval_timestamp_utc": datetime.now(timezone.utc).isoformat(),
-        "files": {} 
+        "files": {},
     }
-    
-    for series_id, name in SERIES_MAP.items():  
-        file_path = os.path.join(RAW_DIR, f"{series_id}.csv")
+
+    for series_id, name in SERIES_MAP.items():
+        file_path = RAW_DIR / f"{series_id}.csv"
+        source = "fred_live"
 
         try:
             print(f"Fetching series: {series_id} ({name}) via pandas_datareader...")
             df = web.DataReader(series_id, "fred", start="1990-01-01")
-            # Convert Index to explicit 'DATE' column
             df = df.reset_index()
             df.columns = ["DATE", series_id]
-            
-            # Save clean CSV without dataframe indices
             df.to_csv(file_path, index=False)
-            print(f"Successfully saved {series_id}.csv")
-        
+            print(f"Successfully downloaded and saved {series_id}.csv")
+
         except Exception as e:
-            if os.path.exists(file_path):
+            if file_path.exists():
                 print(
-                    f"Warning: Network download failed for {series_id} ({e})"
-                    f"Using existing local file at {file_path}"
+                    f"Warning: Network request failed for {series_id} ({e}). "
+                    f"Falling back to local cached snapshot at {file_path.as_posix()}."
                 )
-                df = pd.DataFrame(file_path)
+                source = "local_cache"
+                df = pd.read_csv(file_path, parse_dates=["DATE"])
             else:
                 raise RuntimeError(
-                    f"Failed to fetch {series_id} and no local cached file exists in {RAW_DIR}."
+                    f"Failed to fetch {series_id} and no local snapshot exists in {RAW_DIR.as_posix()}."
                 ) from e
-        
-        
+
+        date_series = pd.to_datetime(df["DATE"])
+
         manifest["files"][series_id] = {
-            "local_path": file_path,
+            "local_path": file_path.as_posix(),
             "variable_name": name,
+            "source": source,
+            "sha256": compute_sha256(file_path),
             "row_count": len(df),
-            "start_date": str(df["DATE"].min()),
-            "end_date": str(df["DATE"].max())
+            "start_date": date_series.min().strftime("%Y-%m-%d"),
+            "end_date": date_series.max().strftime("%Y-%m-%d"),
         }
-        
-        with open(MANIFEST_PATH, "w") as f:
-            json.dump(manifest, f, indent=4)
-            
-        print(f"\nData pull completed successfully. Manifest saved to {MANIFEST_PATH}.")
- 
+
+    with open(MANIFEST_PATH, "w") as f:
+        json.dump(manifest, f, indent=4)
+
+    print(f"\nData pull completed successfully. Manifest saved to {MANIFEST_PATH.as_posix()}")
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     execute_data_pull()
