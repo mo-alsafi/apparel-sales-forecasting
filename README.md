@@ -43,7 +43,7 @@ Which forecasting method should the business trust, under what economic conditio
 - **Pipeline Processing:** Raw CSV files in `data/raw/` are preserved untouched. The processing layer in `src/db_ingestion.py` performs linear interpolation for this single-month gap:
   - **CPI Interpolation:** $\frac{\text{CPI}_{\text{Sep25}} + \text{CPI}_{\text{Nov25}}}{2} = \frac{324.245 + 325.063}{2} = 324.654$
   - **UNRATE Interpolation:** $\frac{\text{UNRATE}_{\text{Sep25}} + \text{UNRATE}_{\text{Nov25}}}{2} = \frac{4.4 + 4.5}{2} = 4.45$
-- **Imputation Audit:** Explicit boolean indicators (`cpi_is_imputed` and `unrate_is_imputed`) are stored in `monthly_macro_apparel` to track transformed values.
+- **Imputation Audit:** Explicit boolean indicators (`cpi_is_imputed` and `unrate_is_computed`) are stored in `monthly_macro_apparel` to track transformed values.
 
 ### 3. Exogenous Alignment & Date Spine Architecture
 - **Calendar Spine:** The target table `monthly_macro_apparel` is constructed using an explicit monthly date spine (`generate_series`). This prevents `LEFT JOIN` operations on sales from truncating available macro regressors when CPI or UNRATE data extend past the latest published sales month.
