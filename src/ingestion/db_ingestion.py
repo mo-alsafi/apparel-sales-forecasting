@@ -154,7 +154,7 @@ def initialize_database():
             CASE 
                 WHEN unrate_raw IS NULL AND observation_date < (SELECT MAX("DATE") FROM raw_unemployment_rate) THEN 1 
                 ELSE 0 
-            END AS unrate_is_computed
+            END AS unrate_is_imputed
 
         FROM raw_joined
         ORDER BY observation_date ASC;
