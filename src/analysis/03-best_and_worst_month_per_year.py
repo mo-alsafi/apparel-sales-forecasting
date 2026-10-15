@@ -5,7 +5,7 @@ import pandas as pd
 
 DB_PATH = Path("data/processed/apparel_forecasting.duckdb")
 REPORTS_PATH = Path("reports")
-SQL = Path(__file__).resolve().parents[2] / "sql" / "03-best_and_worst_month_per_year.csv".read_text()
+SQL = (Path(__file__).resolve().parents[2] / "sql" / "03-best_and_worst_month_per_year.csv").read_text()
 
 def best_and_worst_month_per_year(file_name):
     REPORT_PATH = REPORTS_PATH / file_name

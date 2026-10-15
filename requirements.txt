@@ -9,6 +9,7 @@ python-dotenv==1.0.1
 numpy>=2.0.0
 pandas>=2.2.0
 pandas-datareader>=0.10.0
+python-dateutil
 
 # Statistical Modeling & Machine Learning
 pmdarima>=2.0.0
