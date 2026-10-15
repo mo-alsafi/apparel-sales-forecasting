@@ -1,4 +1,4 @@
-observation_date,apparel_sales_nsa,apparel_sales_sa,cpi,cpi_is_imputed,unrate,unrate_is_computed
+observation_date,apparel_sales_nsa,apparel_sales_sa,cpi,cpi_is_imputed,unrate,unrate_is_imputed
 1990-01-01,,,127.5,0,5.4,0
 1990-02-01,,,128.0,0,5.3,0
 1990-03-01,,,128.6,0,5.2,0
