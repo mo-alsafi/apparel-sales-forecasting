@@ -84,6 +84,8 @@ def make_drift_forecaster(method: str) -> Callable:
     """Build seasonal-naive-plus-drift forecast: mean_all, median_all, mean_trailing12."""
     if method not in {"mean_all", "median_all", "mean_trailing12"}:
         raise ValueError("method must be mean_all, median_all, or mean_trailing12")
+    
+    fallback_origins = set()
 
     def forecast(train: pd.Series, forecast_months: pd.DatetimeIndex) -> pd.Series:
         sn = seasonal_naive_forecast(train, forecast_months)
@@ -92,19 +94,40 @@ def make_drift_forecaster(method: str) -> Callable:
             rate = float(growth.mean()) if len(growth) else 0.0
         elif method == "median_all":
             rate = float(growth.median()) if len(growth) else 0.0
-        else:
+        else:   
             start = train.index.max() - pd.DateOffset(months=11)
             trailing = growth.loc[growth.index >= start]
-            rate = float(trailing.mean()) if len(trailing) else (float(growth.median()) if len(growth) else 0.0)
+
+            if len(trailing) >= MIN_TRAILING_OBS:
+                rate = float(trailing.mean())
+            else:
+                # Insufficient evidence: do not extrapolate a noisy drift estimate.
+                rate = 0.0
+                forecast.fallback_origins.add(train.index.max())
+
         return sn * (1 + rate)
 
+    forecast.fallback_origins = fallback_origins
+    
     forecast.__name__ = f"seasonal_naive_plus_{method}"
     return forecast
 
 
-def evaluate(forecast_fn: Callable, y: pd.Series,
-             origins: Iterable[str | pd.Timestamp] = ALL_ORIGINS) -> pd.DataFrame:
-    """Evaluate folds; forecast_fn only receives training observations and forecast dates."""
+def evaluate(
+    forecast_fn: Callable,
+    y: pd.Series,
+    origins: Iterable[str | pd.Timestamp] = VALIDATION_ORIGINS,
+    *,
+    final: bool = False,
+) -> pd.DataFrame:
+    """Evaluate folds; final test origins require explicit final=True."""
+    requested_origins = {pd.Timestamp(o) for o in origins}
+    locked_test_origins = {pd.Timestamp(o) for o in TEST_ORIGINS}
+
+    if not final and requested_origins & locked_test_origins:
+        raise ValueError(
+            "Test origins are locked. Use final=True only for the final run."
+        )
     y = pd.Series(y).copy()
     y.index = pd.DatetimeIndex(y.index)
     y = y.sort_index()
