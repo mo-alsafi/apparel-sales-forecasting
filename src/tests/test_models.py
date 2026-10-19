@@ -10,7 +10,9 @@ from src.models import (
     make_prophet_forecaster,
     _ets_training_series,
     COVID_MONTHS,
+    _forecast_series
 )
+
 
 
 def make_training_series():
@@ -124,3 +126,18 @@ def test_ets_covid_imputation_is_finite_and_does_not_mutate_input(
         filled.loc[COVID_MONTHS].to_numpy(),
         original.loc[COVID_MONTHS].to_numpy(),
     )
+    
+
+def test_forecast_series_rejects_non_positive_values():
+    months = pd.date_range(
+        "2023-01-01",
+        periods=2,
+        freq="MS",
+    )
+
+    with pytest.raises(ValueError, match="non-positive"):
+        _forecast_series(
+            [100.0, 0.0],
+            months,
+            name="test model",
+        )

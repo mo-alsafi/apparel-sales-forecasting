@@ -86,7 +86,11 @@ def _forecast_series(
 
     # All sales forecasts must be positive.
     # Clip only non-positive point forecasts to a tiny positive floor.
-    values = np.maximum(values, 1e-6)
+    if (values <= 0).any():
+        raise ValueError(
+            f"{name} produced non-positive forecasts. "
+            "Inspect the fitted model and its transformation."
+        )
 
     return pd.Series(values, index=months, name=name)
 
@@ -518,17 +522,21 @@ def sarima_month_dummy_log_forecast(
     forecast_months: pd.DatetimeIndex,
 ) -> pd.Series:
     """
-    Log-scale D=0 SARIMAX with month-dummy regressors.
+    Fit SARIMAX on log sales levels with month-dummy regressors.
 
-    The month-dummy regression in the EDA was performed on log
-    first differences, so this is the primary D=0 specification.
+    This candidate uses ARIMA(0,1,q) errors and no seasonal
+    differencing (D=0).
+
+    It is distinct from the Phase 2 OLS regression of log first
+    differences on month dummies, which produced R-squared = 0.862.
+    That earlier R-squared does not describe this SARIMAX fit.
     """
     return _sarimax_forecast(
         train,
         forecast_months,
         transform="log",
         use_month_dummies=True,
-        name="SARIMA month dummies log D=0",
+        name="SARIMAX log levels + month dummies (d=1, D=0)",
     )
 
 
@@ -574,37 +582,51 @@ def make_prophet_forecaster(
         train: pd.Series,
         forecast_months: pd.DatetimeIndex,
     ) -> pd.Series:
-        # Local import keeps Prophet optional for non-Prophet tests.
-        from prophet import Prophet
+        # Remember the current logging setting.
+        cmdstan_logger = logging.getLogger("cmdstanpy")
+        previous_disabled = cmdstan_logger.disabled
 
-        series = _mask_covid(train)
+        # Disable cmdstanpy messages before importing Prophet.
+        cmdstan_logger.disabled = True
 
-        prophet_train = pd.DataFrame({
-            "ds": series.index,
-            "y": series.values,
-        }).dropna()
+        try:
+            from prophet import Prophet
 
-        model = Prophet(
-            yearly_seasonality=True,
-            weekly_seasonality=False,
-            daily_seasonality=False,
-            seasonality_mode=seasonality_mode,
-            changepoint_prior_scale=changepoint_prior_scale,
-            uncertainty_samples=0,
-        )
+            # Keep disabled after Prophet import as well.
+            cmdstan_logger.disabled = True
 
-        model.fit(prophet_train)
+            series = _mask_covid(train)
 
-        months = pd.DatetimeIndex(forecast_months)
-        future = pd.DataFrame({"ds": months})
+            prophet_train = pd.DataFrame({
+                "ds": series.index,
+                "y": series.values,
+            }).dropna()
 
-        result = model.predict(future)
+            model = Prophet(
+                yearly_seasonality=True,
+                weekly_seasonality=False,
+                daily_seasonality=False,
+                seasonality_mode=seasonality_mode,
+                changepoint_prior_scale=changepoint_prior_scale,
+                uncertainty_samples=0,
+            )
 
-        return _forecast_series(
-            result["yhat"].to_numpy(),
-            months,
-            name=forecast_fn.__name__,
-        )
+            model.fit(prophet_train)
+
+            months = pd.DatetimeIndex(forecast_months)
+            future = pd.DataFrame({"ds": months})
+
+            result = model.predict(future)
+
+            return _forecast_series(
+                result["yhat"].to_numpy(),
+                months,
+                name=forecast_fn.__name__,
+            )
+
+        finally:
+            # Restore the original logger setting even if fitting fails.
+            cmdstan_logger.disabled = previous_disabled
 
     cps_name = str(changepoint_prior_scale).replace(".", "_")
 
