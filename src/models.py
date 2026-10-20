@@ -578,55 +578,63 @@ def make_prophet_forecaster(
             "changepoint_prior_scale must be positive."
         )
 
-    def forecast_fn(
-        train: pd.Series,
-        forecast_months: pd.DatetimeIndex,
-    ) -> pd.Series:
-        # Remember the current logging setting.
-        cmdstan_logger = logging.getLogger("cmdstanpy")
-        previous_disabled = cmdstan_logger.disabled
+    
+def forecast_fn(
+    train: pd.Series,
+    forecast_months: pd.DatetimeIndex,
+) -> pd.Series:
+    cmdstan_logger = logging.getLogger("cmdstanpy")
+    plot_logger = logging.getLogger("prophet.plot")
 
-        # Disable cmdstanpy messages before importing Prophet.
-        cmdstan_logger.disabled = True
+    previous_cmdstan_disabled = cmdstan_logger.disabled
+    previous_plot_disabled = plot_logger.disabled
 
-        try:
+    # Set these before importing Prophet, which loads its plotting module.
+    cmdstan_logger.disabled = True
+    plot_logger.disabled = True
+
+    try:
+        # Filter only the known notebook-widget warning during import.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"IProgress not found.*",
+            )
             from prophet import Prophet
 
-            # Keep disabled after Prophet import as well.
-            cmdstan_logger.disabled = True
+        series = _mask_covid(train)
 
-            series = _mask_covid(train)
+        prophet_train = pd.DataFrame({
+            "ds": series.index,
+            "y": series.values,
+        }).dropna()
 
-            prophet_train = pd.DataFrame({
-                "ds": series.index,
-                "y": series.values,
-            }).dropna()
+        model = Prophet(
+            yearly_seasonality=True,
+            weekly_seasonality=False,
+            daily_seasonality=False,
+            seasonality_mode=seasonality_mode,
+            changepoint_prior_scale=changepoint_prior_scale,
+            uncertainty_samples=0,
+        )
 
-            model = Prophet(
-                yearly_seasonality=True,
-                weekly_seasonality=False,
-                daily_seasonality=False,
-                seasonality_mode=seasonality_mode,
-                changepoint_prior_scale=changepoint_prior_scale,
-                uncertainty_samples=0,
-            )
+        model.fit(prophet_train)
 
-            model.fit(prophet_train)
+        months = pd.DatetimeIndex(forecast_months)
+        future = pd.DataFrame({"ds": months})
+        result = model.predict(future)
 
-            months = pd.DatetimeIndex(forecast_months)
-            future = pd.DataFrame({"ds": months})
+        return _forecast_series(
+            result["yhat"].to_numpy(),
+            months,
+            name=forecast_fn.__name__,
+        )
 
-            result = model.predict(future)
+    finally:
+        # Restore both logger settings even if import or fitting fails.
+        cmdstan_logger.disabled = previous_cmdstan_disabled
+        plot_logger.disabled = previous_plot_disabled
 
-            return _forecast_series(
-                result["yhat"].to_numpy(),
-                months,
-                name=forecast_fn.__name__,
-            )
-
-        finally:
-            # Restore the original logger setting even if fitting fails.
-            cmdstan_logger.disabled = previous_disabled
 
     cps_name = str(changepoint_prior_scale).replace(".", "_")
 
