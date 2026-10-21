@@ -10,6 +10,7 @@ import pandas as pd
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from src.features import build_regressor_matrices
 
 
 logger = logging.getLogger(__name__)
@@ -565,8 +566,8 @@ def make_prophet_forecaster(
     """
     Return a forecast function for one fixed Prophet configuration.
 
-    Compare the returned functions on the six validation folds.
-    No settings are selected using in-sample fit or the test folds.
+    Model settings are evaluated using the validation folds.
+    No settings are selected using the locked test folds.
     """
     if seasonality_mode not in {"additive", "multiplicative"}:
         raise ValueError(
@@ -578,68 +579,320 @@ def make_prophet_forecaster(
             "changepoint_prior_scale must be positive."
         )
 
-    
-def forecast_fn(
-    train: pd.Series,
-    forecast_months: pd.DatetimeIndex,
-) -> pd.Series:
-    cmdstan_logger = logging.getLogger("cmdstanpy")
-    plot_logger = logging.getLogger("prophet.plot")
+    # IMPORTANT: forecast_fn must be nested inside this factory.
+    def forecast_fn(
+        train: pd.Series,
+        forecast_months: pd.DatetimeIndex,
+    ) -> pd.Series:
 
-    previous_cmdstan_disabled = cmdstan_logger.disabled
-    previous_plot_disabled = plot_logger.disabled
+        cmdstan_logger = logging.getLogger("cmdstanpy")
+        plot_logger = logging.getLogger("prophet.plot")
 
-    # Set these before importing Prophet, which loads its plotting module.
-    cmdstan_logger.disabled = True
-    plot_logger.disabled = True
+        previous_cmdstan_disabled = cmdstan_logger.disabled
+        previous_plot_disabled = plot_logger.disabled
 
-    try:
-        # Filter only the known notebook-widget warning during import.
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=r"IProgress not found.*",
+        # Set these before importing Prophet.
+        cmdstan_logger.disabled = True
+        plot_logger.disabled = True
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"IProgress not found.*",
+                )
+                from prophet import Prophet
+
+            # Use the existing Phase 4 COVID training treatment.
+            series = _mask_covid(train)
+
+            prophet_train = pd.DataFrame({
+                "ds": series.index,
+                "y": series.values,
+            }).dropna()
+
+            model = Prophet(
+                yearly_seasonality=True,
+                weekly_seasonality=False,
+                daily_seasonality=False,
+                seasonality_mode=seasonality_mode,
+                changepoint_prior_scale=changepoint_prior_scale,
+                uncertainty_samples=0,
             )
-            from prophet import Prophet
 
-        series = _mask_covid(train)
+            model.fit(prophet_train)
 
-        prophet_train = pd.DataFrame({
-            "ds": series.index,
-            "y": series.values,
-        }).dropna()
+            months = pd.DatetimeIndex(forecast_months)
+            future = pd.DataFrame({"ds": months})
 
-        model = Prophet(
-            yearly_seasonality=True,
-            weekly_seasonality=False,
-            daily_seasonality=False,
-            seasonality_mode=seasonality_mode,
-            changepoint_prior_scale=changepoint_prior_scale,
-            uncertainty_samples=0,
-        )
+            result = model.predict(future)
 
-        model.fit(prophet_train)
+            return _forecast_series(
+                result["yhat"].to_numpy(),
+                months,
+                name=forecast_fn.__name__,
+            )
 
-        months = pd.DatetimeIndex(forecast_months)
-        future = pd.DataFrame({"ds": months})
-        result = model.predict(future)
+        finally:
+            # Restore logger settings even if fitting fails.
+            cmdstan_logger.disabled = previous_cmdstan_disabled
+            plot_logger.disabled = previous_plot_disabled
 
-        return _forecast_series(
-            result["yhat"].to_numpy(),
-            months,
-            name=forecast_fn.__name__,
-        )
-
-    finally:
-        # Restore both logger settings even if import or fitting fails.
-        cmdstan_logger.disabled = previous_cmdstan_disabled
-        plot_logger.disabled = previous_plot_disabled
-
-
+    # These lines belong to the factory, outside forecast_fn.
     cps_name = str(changepoint_prior_scale).replace(".", "_")
 
     forecast_fn.__name__ = (
         f"prophet_{seasonality_mode}_cps_{cps_name}"
     )
+
+    # Return the callable instead of implicitly returning None.
+    return forecast_fn
+
+
+
+
+
+def make_sarima_exog_forecaster(
+    macro: pd.DataFrame,
+    spec_by_origin: dict,
+    feature_set: str | None,
+    *,
+    name: str | None = None,
+    coefficient_records: list | None = None,
+    placebo_seed: int | None = None,
+):
+    """
+    Create a forecast_fn compatible with src.evaluation.evaluate().
+
+    The SARIMA order is supplied by spec_by_origin. Within each
+    validation fold, every regressor candidate uses the same order
+    selected by the no-regressor Phase 4 training fit.
+
+    feature_set:
+        None             -> no-regressor reference
+        'unemployment'   -> unemployment only
+        'cpi'            -> CPI only
+        'both'           -> both regressors
+
+    placebo_seed:
+        When provided, randomly permute each training regressor
+        independently and sample future placebo values from that
+        fold's training feature distribution. This never uses
+        post-origin macro observations.
+
+    coefficient_records:
+        Optional list that receives fold-level coefficient estimates
+        and 95% confidence intervals for the genuine regressor models.
+    """
+    valid_feature_sets = {
+        None,
+        "unemployment",
+        "cpi",
+        "both",
+    }
+
+    if feature_set not in valid_feature_sets:
+        raise ValueError(
+            "feature_set must be None, 'unemployment', 'cpi', or 'both'."
+        )
+
+    if placebo_seed is not None and feature_set is None:
+        raise ValueError(
+            "A placebo requires at least one regressor."
+        )
+
+    if name is None:
+        name = (
+            "SARIMA log (no exog)"
+            if feature_set is None
+            else f"SARIMA log + {feature_set}"
+        )
+
+    model_name = name
+
+    def forecast_fn(
+        train: pd.Series,
+        forecast_months: pd.DatetimeIndex,
+    ) -> pd.Series:
+
+        series = _monthly_train(train)
+        months = pd.DatetimeIndex(forecast_months)
+
+        origin = series.index.max().to_period("M").to_timestamp()
+
+        if origin not in spec_by_origin:
+            raise ValueError(
+                f"No training-only SARIMA specification for "
+                f"origin {origin:%Y-%m}."
+            )
+
+        spec = spec_by_origin[origin]
+        order = tuple(spec["order"])
+        seasonal_order = tuple(spec["seasonal_order"])
+
+        X_train = None
+        X_forecast = None
+
+        if feature_set is not None:
+            X_train, X_forecast = build_regressor_matrices(
+                macro=macro,
+                train_dates=series.index,
+                forecast_dates=months,
+                origin=origin,
+                feature_set=feature_set,
+            )
+
+            # The placebo deliberately breaks the historical
+            # target-feature alignment. Its values are drawn only
+            # from this fold's training regressors.
+            if placebo_seed is not None:
+                feature_offset = {
+                    "unemployment": 101,
+                    "cpi": 202,
+                    "both": 303,
+                }[feature_set]
+
+                rng = np.random.default_rng(
+                    placebo_seed
+                    + feature_offset
+                    + origin.year * 100
+                    + origin.month
+                )
+
+                X_train = X_train.copy()
+                X_forecast = X_forecast.copy()
+
+                for column in X_train.columns:
+                    historical_values = (
+                        X_train[column].to_numpy(dtype=float).copy()
+                    )
+
+                    X_train[column] = rng.permutation(
+                        historical_values
+                    )
+
+                    X_forecast[column] = rng.choice(
+                        historical_values,
+                        size=len(X_forecast),
+                        replace=True,
+                    )
+
+        # Follow Phase 4's training-time COVID treatment.
+        # This is not the longer scoring mask.
+        endog = series.copy()
+
+        endog.loc[
+            COVID_MONTHS.intersection(endog.index)
+        ] = np.nan
+
+        observed = endog.dropna()
+
+        if (observed <= 0).any():
+            raise ValueError("Sales must be positive before log fitting.")
+
+        log_endog = np.log(endog)
+
+        model = SARIMAX(
+            log_endog,
+            exog=X_train,
+            order=order,
+            seasonal_order=seasonal_order,
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+            missing="none",
+        )
+
+        # Do not hide convergence or other fitting warnings.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            fitted = model.fit(
+                disp=False,
+                maxiter=300,
+            )
+
+        for item in caught:
+            logger.warning(
+                "%s, origin %s: warning [%s]: %s",
+                model_name,
+                origin.strftime("%Y-%m"),
+                item.category.__name__,
+                item.message,
+            )
+
+        mle_info = getattr(fitted, "mle_retvals", {}) or {}
+
+        if (
+            isinstance(mle_info, dict)
+            and mle_info.get("converged") is False
+        ):
+            logger.warning(
+                "%s did not converge for origin %s.",
+                model_name,
+                origin.strftime("%Y-%m"),
+            )
+
+        # Capture regression coefficients and their fold-level CIs.
+        if X_train is not None and coefficient_records is not None:
+            parameter_names = list(fitted.model.param_names)
+            parameters = np.asarray(fitted.params, dtype=float)
+            p_values = np.asarray(fitted.pvalues, dtype=float)
+            confidence_intervals = np.asarray(
+                fitted.conf_int(alpha=0.05),
+                dtype=float,
+            )
+
+            for column in X_train.columns:
+                if column not in parameter_names:
+                    raise KeyError(
+                        f"Could not find fitted coefficient {column!r}."
+                    )
+
+                position = parameter_names.index(column)
+                coefficient = float(parameters[position])
+                lower = float(
+                    confidence_intervals[position, 0]
+                )
+                upper = float(
+                    confidence_intervals[position, 1]
+                )
+
+                coefficient_records.append({
+                    "Model": model_name,
+                    "Origin": origin.strftime("%Y-%m"),
+                    "Regressor": column,
+                    "Coefficient": coefficient,
+                    "CI_Lower": lower,
+                    "CI_Upper": upper,
+                    "P_Value": float(p_values[position]),
+                    "CI_Includes_Zero": (
+                        lower <= 0.0 <= upper
+                    ),
+                })
+
+        forecast_kwargs = {}
+
+        if X_forecast is not None:
+            forecast_kwargs["exog"] = X_forecast
+
+        predicted_log = fitted.get_forecast(
+            steps=len(months),
+            **forecast_kwargs,
+        ).predicted_mean
+
+        # Match Phase 4: return forecasts on the original sales scale.
+        # exp(log forecast) is a median forecast, not automatically
+        # the conditional mean. Dollar-scale bias remains important.
+        predicted = np.exp(
+            np.asarray(predicted_log, dtype=float).reshape(-1)
+        )
+
+        return _forecast_series(
+            predicted,
+            months,
+            name=model_name,
+        )
+
+    forecast_fn.__name__ = model_name
 
     return forecast_fn

@@ -1,0 +1,5 @@
+Model,Regressor,Folds,Positive,Negative,Zero_In_CI_Folds,Mean_Coefficient
+SARIMA + CPI,cpi,6,2,4,6,-0.0012661777089763382
+SARIMA + both,cpi,6,0,6,6,-0.0019150484581466228
+SARIMA + both,unemployment,6,2,4,0,-0.005556952532996967
+SARIMA + unemployment,unemployment,6,2,4,0,-0.004733801889118503
